@@ -11,3 +11,17 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+.circle-scale-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start; /* Changed from center to align the half-circle to the top */
+  height: 60vh; /* Increased to give more space */
+  background-color: #f0f0f0;
+  padding-top: 20px; /* Add some top padding */
+}
+
+.circle-scale-container svg {
+  max-width: 100%;
+  height: auto;
+}
