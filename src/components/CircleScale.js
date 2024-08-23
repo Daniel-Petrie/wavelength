@@ -2,33 +2,25 @@
 import React from 'react';
 
 function CircleScale({ markerPosition, guesses, phase, onGuess, isActivePlayer, playerColors }) {
-  const svgSize = 800;
+  const svgSize = 400;
   const centerX = svgSize / 2;
   const centerY = svgSize / 2;
-  const radius = 390;
+  const radius = 180;
+
+  const markerWidth = 0.15;
+  const markerStart = markerPosition - markerWidth / 2;
+  const markerEnd = markerPosition + markerWidth / 2;
 
   const handleClick = (event) => {
     if (phase === 'guessing' && !isActivePlayer) {
       const svgRect = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - svgRect.left - centerX;
       const y = centerY - (event.clientY - svgRect.top);
-      const angle = Math.atan2(y, x);
-      const normalizedPosition = (angle + Math.PI) / Math.PI;
+      let angle = Math.atan2(y, x);
+      if (angle < 0) angle += 2 * Math.PI;
+      const normalizedPosition = angle / Math.PI;
       onGuess(normalizedPosition);
     }
-  };
-
-  const createSlice = (startAngle, endAngle, color) => {
-    const start = polarToCartesian(centerX, centerY, radius, startAngle);
-    const end = polarToCartesian(centerX, centerY, radius, endAngle);
-    const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
-    
-    return (
-      <path
-        d={`M ${centerX},${centerY} L ${start.x},${start.y} A ${radius},${radius} 0 ${largeArcFlag} 0 ${end.x},${end.y} Z`}
-        fill={color}
-      />
-    );
   };
 
   const polarToCartesian = (centerX, centerY, radius, angleInRadians) => {
@@ -38,36 +30,37 @@ function CircleScale({ markerPosition, guesses, phase, onGuess, isActivePlayer, 
     };
   };
 
-  const markerWidth = 0.25;
-  const markerStart = (markerPosition - markerWidth / 2 + 1) % 1;
-  const markerEnd = (markerPosition + markerWidth / 2 + 1) % 1;
-
   const createMarkerSegment = (start, end, color) => {
-    if (start < end) {
-      return createSlice(start * Math.PI, end * Math.PI, color);
-    } else {
-      return (
-        <>
-          {createSlice(start * Math.PI, Math.PI, color)}
-          {createSlice(0, end * Math.PI, color)}
-        </>
-      );
-    }
+    const startPoint = polarToCartesian(centerX, centerY, radius, start * Math.PI);
+    const endPoint = polarToCartesian(centerX, centerY, radius, end * Math.PI);
+    const largeArcFlag = end - start > 0.5 ? 1 : 0;
+
+    return (
+      <path
+        d={`M ${centerX} ${centerY} L ${startPoint.x} ${startPoint.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${endPoint.x} ${endPoint.y} Z`}
+        fill={color}
+      />
+    );
   };
 
   return (
-    <svg width={svgSize} height={centerY + 10} viewBox={`0 0 ${svgSize} ${centerY + 10}`} onClick={handleClick}>
+    <svg 
+      width={svgSize} 
+      height={centerY + 10} 
+      viewBox={`0 0 ${svgSize} ${centerY + 10}`} 
+      onClick={handleClick}
+    >
       {/* Main dark half-circle */}
       <path d={`M ${centerX - radius},${centerY} A ${radius},${radius} 0 0 1 ${centerX + radius},${centerY}`} fill="#1e1e2e" />
 
-      {/* Marker segments (only visible for active player during input phase or everyone during reveal phase) */}
-      {(phase === 'reveal' || (phase === 'input' && isActivePlayer)) && (
+      {/* Marker segments */}
+      {(phase === 'reveal' || (phase === 'input' && isActivePlayer) || (phase === 'guessing' && isActivePlayer)) && (
         <>
-          {createMarkerSegment(markerStart, (markerStart + 0.05) % 1, "#ff9999")} {/* 2 points */}
-          {createMarkerSegment((markerStart + 0.05) % 1, (markerStart + 0.1) % 1, "#ff6666")} {/* 3 points */}
-          {createMarkerSegment((markerStart + 0.1) % 1, (markerEnd - 0.1 + 1) % 1, "#ff3333")} {/* 4 points */}
-          {createMarkerSegment((markerEnd - 0.1 + 1) % 1, (markerEnd - 0.05 + 1) % 1, "#ff6666")} {/* 3 points */}
-          {createMarkerSegment((markerEnd - 0.05 + 1) % 1, markerEnd, "#ff9999")} {/* 2 points */}
+          {createMarkerSegment(markerStart, markerStart + 0.03, "#ff9999")} {/* 2 points */}
+          {createMarkerSegment(markerStart + 0.03, markerStart + 0.06, "#ff6666")} {/* 3 points */}
+          {createMarkerSegment(markerStart + 0.06, markerEnd - 0.06, "#ff3333")} {/* 4 points */}
+          {createMarkerSegment(markerEnd - 0.06, markerEnd - 0.03, "#ff6666")} {/* 3 points */}
+          {createMarkerSegment(markerEnd - 0.03, markerEnd, "#ff9999")} {/* 2 points */}
         </>
       )}
 

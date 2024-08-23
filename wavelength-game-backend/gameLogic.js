@@ -1,20 +1,43 @@
 // gameLogic.js
 class Game {
-    constructor(id) {
+    constructor(id, totalRounds) {
       this.id = id;
       this.players = [];
       this.currentRound = 1;
-      this.totalRounds = 10;
+      this.totalRounds = totalRounds;
       this.activePlayerIndex = 0;
       this.markerPosition = Math.random();
       this.keyword = '';
       this.guesses = [];
-      this.phase = 'waiting'; // waiting, input, guessing, reveal, gameOver
-      this.inputTimer = 20;
-      this.guessingTimer = 40;
+      this.phase = 'waiting';
+      this.inputTimer = 30;
+      this.guessingTimer = 25;
+      this.totalRounds = 10;
       this.category = '';
-    this.question = '';
+      this.question = '';
+      this.isGameOver = false;
     }
+   
+    nextRound() {
+        if (this.currentRound < this.totalRounds) {
+          this.currentRound++;
+          this.activePlayerIndex = (this.activePlayerIndex + 1) % this.players.length;
+          this.markerPosition = Math.random();
+          this.keyword = '';
+          this.guesses = [];
+          this.phase = 'input';
+          this.inputTimer = 30;
+          this.guessingTimer = 25;
+          this.setNewQuestion();
+          return true;
+        }
+        this.isGameOver = true;
+        this.phase = 'gameOver';
+        return false;
+      }
+    
+      // ... (other methods)
+    
   
     addPlayer(name, color) {
       if (this.players.length < 8 && this.phase === 'waiting') {
@@ -57,7 +80,6 @@ class Game {
             'Underrated Actor or Overrated Actor',
             'Reliable or Unreliable',
             'Expensive or Cheap',
-            "Risky or Sage",
             'Easy Job or Hard Job',
             'Red Flag or Green Flag',
             'Annoying Sound or Pleasing Sound',
@@ -107,41 +129,45 @@ class Game {
       return false;
     }
   
+    
     calculateScores() {
-      const markerWidth = 0.25; // 25% of the scale
-      const markerStart = this.markerPosition - markerWidth / 2;
-      const markerEnd = this.markerPosition + markerWidth / 2;
-  
-      this.players.forEach(player => {
-        if (player.id !== this.players[this.activePlayerIndex].id) {
-          const guess = this.guesses.find(g => g.playerId === player.id);
-          if (guess) {
-            const distance = Math.abs(guess.position - this.markerPosition);
-            if (distance <= markerWidth / 2) {
-              player.score += 4;
-            } else if (distance <= markerWidth) {
-              player.score += 3;
-            } else if (distance <= markerWidth * 1.5) {
-              player.score += 2;
+        const roundResults = {};
+        const markerWidth = 0.15;
+        const markerStart = this.markerPosition - markerWidth / 2;
+        const markerEnd = this.markerPosition + markerWidth / 2;
+        let correctGuesses = 0;
+    
+        this.players.forEach(player => {
+          if (player.id !== this.players[this.activePlayerIndex].id) {
+            const guess = this.guesses.find(g => g.playerId === player.id);
+            if (guess) {
+              const distance = Math.abs(guess.position - this.markerPosition);
+              let points = 0;
+              if (distance <= markerWidth / 2) {
+                points = 4;
+                correctGuesses++;
+              } else if (distance <= markerWidth * 0.75) {
+                points = 3;
+                correctGuesses++;
+              } else if (distance <= markerWidth) {
+                points = 2;
+                correctGuesses++;
+              }
+              player.score += points;
+              roundResults[player.id] = points;
+            } else {
+              roundResults[player.id] = 0;
             }
+          } else {
+            // Points for the active player (host)
+            const hostPoints = correctGuesses; // One point for each correct guess
+            player.score += hostPoints;
+            roundResults[player.id] = hostPoints;
           }
-        }
-      });
-    }
-  
-    nextRound() {
-      if (this.currentRound < this.totalRounds) {
-        this.currentRound++;
-        this.activePlayerIndex = (this.activePlayerIndex + 1) % this.players.length;
-        this.markerPosition = Math.random();
-        this.keyword = '';
-        this.guesses = [];
-        this.phase = 'input';
-        this.inputTimer = 20;
-      } else {
-        this.phase = 'gameOver';
+        });
+    
+        return roundResults;
       }
-    }
   
     decrementTimer() {
       if (this.phase === 'input' && this.inputTimer > 0) {

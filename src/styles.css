@@ -12,7 +12,7 @@ body {
     padding: 20px;
   }
   
-  h1, h2 {
+  h1, h2, h3, h4 {
     color: #333;
   }
   
@@ -59,4 +59,75 @@ body {
   
   .circle-scale-container {
     margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .circle-scale-container svg {
+    max-width: 100%;
+    height: auto;
+  }
+  
+  .timer {
+    font-size: 18px;
+    font-weight: bold;
+    margin: 10px 0;
+  }
+  
+  /* Mobile responsiveness */
+  @media (max-width: 600px) {
+    .container {
+      padding: 10px;
+    }
+  
+    h1 {
+      font-size: 24px;
+    }
+  
+    h2 {
+      font-size: 20px;
+    }
+  
+    h3, h4 {
+      font-size: 18px;
+    }
+  
+    input[type="text"], input[type="color"], button {
+      width: 100%;
+      margin: 5px 0;
+    }
+  
+    .game-info {
+      padding: 10px;
+    }
+  
+    .circle-scale-container svg {
+      max-height: 300px;
+    }
+  }
+
+  .points-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+  }
+  
+  .points-popup h3 {
+    margin-top: 0;
+  }
+  
+  .points-popup ul {
+    list-style-type: none;
+    padding: 0;
+  }
+  
+  .points-popup li {
+    margin: 5px 0;
   }

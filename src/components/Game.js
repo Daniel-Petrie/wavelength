@@ -4,23 +4,33 @@ import { useParams, useLocation } from 'react-router-dom';
 import io from 'socket.io-client';
 import { getGameState, startGame } from '../api';
 import CircleScale from './CircleScale';
+import Leaderboard from './Leaderboard';
 import '../styles.css';
 
-const socket = io('http://localhost:5000'); // Update with your backend URL
+const socket = io('http://localhost:5000');
 
 const Game = () => {
-    const { gameId } = useParams();
-    const location = useLocation();
-    const { isHost, playerId, playerName, playerColor } = location.state;
-  
-    const [gameState, setGameState] = useState(null);
-    const [keyword, setKeyword] = useState('');
-    const [localGuess, setLocalGuess] = useState(null);
+  const { gameId } = useParams();
+  const location = useLocation();
+  const { isHost, playerId, playerName, playerColor } = location.state;
+
+  const [gameState, setGameState] = useState(null);
+  const [keyword, setKeyword] = useState('');
+  const [localGuess, setLocalGuess] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [pointsEarned, setPointsEarned] = useState(null);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   useEffect(() => {
     const fetchGameState = async () => {
-      const state = await getGameState(gameId);
-      setGameState(state);
+      try {
+        const state = await getGameState(gameId);
+        setGameState(state);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching game state:', error);
+        setLoading(false);
+      }
     };
 
     fetchGameState();
@@ -31,32 +41,29 @@ const Game = () => {
       setGameState(updatedGameState);
     });
 
+    socket.on('roundResults', (results) => {
+      setPointsEarned(results);
+      setTimeout(() => setPointsEarned(null), 5000); // Hide after 5 seconds
+    });
+
     return () => {
       socket.off('gameUpdate');
+      socket.off('roundResults');
     };
   }, [gameId, playerId]);
 
   const handleStartGame = async () => {
     if (isHost) {
       try {
-        const response = await startGame(gameId, playerId);
-        console.log('Start game response:', response);
+        await startGame(gameId, playerId);
       } catch (error) {
         console.error('Error starting game:', error);
-        if (error.response) {
-          console.error('Error response:', error.response.data);
-          alert(`Error starting game: ${error.response.data.message}`);
-        } else if (error.request) {
-          console.error('No response received:', error.request);
-          alert("No response received from server. Please check your connection.");
-        } else {
-          console.error('Error setting up request:', error.message);
-          alert(`An error occurred: ${error.message}`);
-        }
+        alert("An error occurred while starting the game. Please try again.");
       }
     }
   };
-   const handleSubmitKeyword = () => {
+
+  const handleSubmitKeyword = () => {
     socket.emit('submitKeyword', { gameId, keyword });
     setKeyword('');
   };
@@ -68,15 +75,23 @@ const Game = () => {
   const handleLockIn = () => {
     if (localGuess !== null) {
       socket.emit('submitGuess', { gameId, playerId, position: localGuess });
-      setLocalGuess(null);
+      setLocalGuess(null); // Reset local guess after locking in
     }
   };
 
+  if (loading) {
+    return <div>Loading game...</div>;
+  }
+
   if (!gameState) {
-    return <div>Loading...</div>;
+    return <div>Error loading game. Please try again.</div>;
   }
 
   const isActivePlayer = gameState.players[gameState.activePlayerIndex].id === playerId;
+
+  if (showLeaderboard) {
+    return <Leaderboard players={gameState.players} onClose={() => setShowLeaderboard(false)} />;
+  }
 
   return (
     <div className="container">
@@ -90,15 +105,24 @@ const Game = () => {
             </li>
           ))}
         </ul>
+        <p>Round: {gameState.currentRound} / {gameState.totalRounds}</p>
       </div>
       {gameState.phase === 'waiting' && isHost && (
         <button onClick={handleStartGame}>Start Game</button>
       )}
-      {gameState.phase === 'input' && (
+      {(gameState.phase === 'input' || gameState.phase === 'guessing') && (
+        <div className="timer">
+          Time remaining: {gameState.phase === 'input' ? gameState.inputTimer : gameState.guessingTimer} seconds
+        </div>
+      )}
+         {gameState.isGameOver && (
+        <button onClick={() => setShowLeaderboard(true)}>Show Leaderboard</button>
+      )}
+      {(gameState.phase === 'input' || gameState.phase === 'guessing') && (
         <div className="game-info">
           <h3>Category: {gameState.category}</h3>
           <h4>Question: {gameState.question}</h4>
-          {isActivePlayer ? (
+          {gameState.phase === 'input' && isActivePlayer && (
             <>
               <input
                 type="text"
@@ -108,44 +132,34 @@ const Game = () => {
               />
               <button onClick={handleSubmitKeyword}>Submit Keyword</button>
             </>
-          ) : (
-            <p>Waiting for {gameState.players[gameState.activePlayerIndex].name} to enter a keyword...</p>
           )}
-          <div className="circle-scale-container">
-            <CircleScale
-              markerPosition={gameState.markerPosition}
-              guesses={[]}
-              phase={gameState.phase}
-              isActivePlayer={isActivePlayer}
-              playerColors={{}}
-            />
-          </div>
+          {gameState.phase === 'guessing' && (
+            <p>Keyword: {gameState.keyword}</p>
+          )}
+             <div className="circle-scale-container">
+        <CircleScale
+          markerPosition={gameState.markerPosition}
+          guesses={[...gameState.guesses, ...(localGuess && !isActivePlayer ? [{ playerId, position: localGuess }] : [])]}
+          phase={gameState.phase}
+          isActivePlayer={isActivePlayer}
+          playerColors={gameState.players.reduce((acc, player) => {
+            acc[player.id] = player.color;
+            return acc;
+          }, {})}
+          onGuess={handleGuess}
+        />
+      </div>
+      {gameState.phase === 'guessing' && !isActivePlayer && (
+        <button onClick={handleLockIn} disabled={localGuess === null}>
+          Lock In Guess
+        </button>
+      )}
         </div>
       )}
-      {gameState.phase === 'guessing' && (
-        <div className="game-info">
-          <h3>Category: {gameState.category}</h3>
-          <h4>Question: {gameState.question}</h4>
-          <p>Keyword: {gameState.keyword}</p>
-          {!isActivePlayer && (
-            <>
-              <div className="circle-scale-container">
-                <CircleScale
-                  markerPosition={gameState.markerPosition}
-                  guesses={localGuess ? [{ playerId, position: localGuess }] : []}
-                  phase={gameState.phase}
-                  isActivePlayer={false}
-                  playerColors={{ [playerId]: playerColor }}
-                  onGuess={handleGuess}
-                />
-              </div>
-              <button onClick={handleLockIn} disabled={localGuess === null}>
-                Lock In Guess
-              </button>
-            </>
-          )}
-        </div>
+      {gameState.phase === 'gameOver' && (
+        <button onClick={() => setShowLeaderboard(true)}>Show Leaderboard</button>
       )}
+      
       {gameState.phase === 'reveal' && (
         <div className="game-info">
           <h3>Category: {gameState.category}</h3>
@@ -164,6 +178,18 @@ const Game = () => {
               }, {})}
             />
           </div>
+        </div>
+      )}
+      {pointsEarned && (
+        <div className="points-popup">
+          <h3>Points Earned:</h3>
+          <ul>
+            {Object.entries(pointsEarned).map(([playerId, points]) => (
+              <li key={playerId}>
+                {gameState.players.find(p => p.id === playerId).name}: {points} points
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

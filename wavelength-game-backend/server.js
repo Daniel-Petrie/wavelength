@@ -4,7 +4,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const Game = require('./gameLogic');
+const Game = require('./gameLogic'); // Make sure this path is correct
 require('dotenv').config();
 
 const app = express();
@@ -22,12 +22,11 @@ app.use(cors());
 app.use(express.json());
 
 const games = new Map();
-
 // Create a new game room
 app.post('/games', (req, res) => {
     const { playerName, playerColor } = req.body;
     const gameId = uuidv4();
-    const newGame = new Game(gameId);
+    const newGame = new Game(gameId); // No need to pass totalRounds
     const hostPlayer = newGame.addPlayer(playerName, playerColor);
     if (hostPlayer) {
       games.set(gameId, newGame);
@@ -66,82 +65,144 @@ app.get('/games/:id', (req, res) => {
 
 // Start the game
 app.put('/games/:id/start', (req, res) => {
-    console.log('Received start game request for game:', req.params.id);
-    console.log('Request body:', req.body);
-    
     const game = games.get(req.params.id);
     if (game) {
-      console.log('Game found. Current state:', game);
       const { playerId } = req.body;
       const hostPlayer = game.players.find(p => p.isHost);
       
       if (hostPlayer && hostPlayer.id === playerId) {
         const success = game.startGame();
         if (success) {
-          console.log('Game started successfully');
+          startGameTimer(req.params.id);
           io.to(req.params.id).emit('gameUpdate', game);
           res.status(200).json({ message: 'Game started' });
         } else {
-          console.log('Failed to start game. Not enough players.');
           res.status(400).json({ message: 'Not enough players to start the game' });
         }
       } else {
-        console.log('Unauthorized start attempt. Host:', hostPlayer, 'Request player:', playerId);
         res.status(403).json({ message: 'Only the host can start the game' });
       }
     } else {
-      console.log('Game not found:', req.params.id);
       res.status(404).json({ message: 'Game not found' });
     }
   });
 
 // Socket.io connection
 io.on('connection', (socket) => {
-  console.log('New client connected');
+    console.log('New client connected');
   
-  socket.on('joinGame', ({ gameId, playerId }) => {
-    socket.join(gameId);
-    console.log(`Player ${playerId} joined game ${gameId}`);
-    
-    const game = games.get(gameId);
-    if (game) {
-      io.to(gameId).emit('gameUpdate', game);
-    }
-  });
-
-  socket.on('submitKeyword', ({ gameId, keyword }) => {
-    const game = games.get(gameId);
-    if (game) {
-      game.submitKeyword(keyword);
-      io.to(gameId).emit('gameUpdate', game);
-    }
-  });
-
-  socket.on('submitGuess', ({ gameId, playerId, position }) => {
-    const game = games.get(gameId);
-    if (game) {
-      game.submitGuess(playerId, position);
-      io.to(gameId).emit('gameUpdate', game);
+    socket.on('joinGame', ({ gameId, playerId }) => {
+      socket.join(gameId);
+      console.log(`Player ${playerId} joined game ${gameId}`);
       
-      if (game.phase === 'reveal') {
-        setTimeout(() => {
-          game.calculateScores();
+      const game = games.get(gameId);
+      if (game) {
+        io.to(gameId).emit('gameUpdate', game);
+      }
+    });
+  
+    socket.on('submitKeyword', ({ gameId, keyword }) => {
+        const game = games.get(gameId);
+        if (game) {
+          game.submitKeyword(keyword);
+          game.phase = 'guessing';
+          game.guessingTimer = 25; // Set guessing timer
+          clearInterval(gameTimers.get(gameId)); // Clear the input timer
+          startGameTimer(gameId); // Start a new timer for guessing phase
           io.to(gameId).emit('gameUpdate', game);
+        }
+      });
+    
+      socket.on('submitGuess', ({ gameId, playerId, position }) => {
+        const game = games.get(gameId);
+        if (game) {
+          game.submitGuess(playerId, position);
+          io.to(gameId).emit('gameUpdate', game);
+          
+          if (game.guesses.length === game.players.length - 1 || game.guessingTimer <= 0) {
+            game.phase = 'reveal';
+            const roundResults = game.calculateScores();
+            io.to(gameId).emit('roundResults', roundResults);
+            io.to(gameId).emit('gameUpdate', game);
+            
+            setTimeout(() => {
+              const continuePlaying = game.nextRound();
+              if (continuePlaying) {
+                startGameTimer(gameId);
+              }
+              io.to(gameId).emit('gameUpdate', game);
+            }, 10000); // Wait 10 seconds before starting next round or ending the game
+          }
+        }
+      });
+    
+  
+    socket.on('disconnect', () => {
+      console.log('Client disconnected');
+    });
+  });
+  
+  server.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+
+  const gameTimers = new Map();
+
+  function startGameTimer(gameId) {
+    const game = games.get(gameId);
+    if (!game) return;
+  
+    const timer = setInterval(() => {
+      if (game.phase === 'input') {
+        game.inputTimer--;
+        if (game.inputTimer <= 0) {
+          game.submitKeyword("Time's up!");
+          game.phase = 'guessing';
+          game.guessingTimer = 25;
+        }
+      } else if (game.phase === 'guessing') {
+        game.guessingTimer--;
+        if (game.guessingTimer <= 0 || game.guesses.length === game.players.length - 1) {
+          clearInterval(timer);
+          gameTimers.delete(gameId);
+          game.phase = 'reveal';
+          const roundResults = game.calculateScores();
+          io.to(gameId).emit('roundResults', roundResults);
           
           setTimeout(() => {
             game.nextRound();
             io.to(gameId).emit('gameUpdate', game);
+            startGameTimer(gameId); // Restart timer for next round
           }, 10000); // Wait 10 seconds before starting next round
-        }, 3000); // Wait 3 seconds before calculating scores
+        }
       }
+      io.to(gameId).emit('gameUpdate', game);
+    }, 1000);
+  
+    gameTimers.set(gameId, timer);
+  }
+  
+  // Make sure to call startGameTimer when a game starts
+  app.put('/games/:id/start', (req, res) => {
+    const game = games.get(req.params.id);
+    if (game) {
+      const { playerId } = req.body;
+      const hostPlayer = game.players.find(p => p.isHost);
+      
+      if (hostPlayer && hostPlayer.id === playerId) {
+        const success = game.startGame();
+        if (success) {
+          game.inputTimer = 30; // Set initial input timer
+          startGameTimer(req.params.id);
+          io.to(req.params.id).emit('gameUpdate', game);
+          res.status(200).json({ message: 'Game started' });
+        } else {
+          res.status(400).json({ message: 'Not enough players to start the game' });
+        }
+      } else {
+        res.status(403).json({ message: 'Only the host can start the game' });
+      }
+    } else {
+      res.status(404).json({ message: 'Game not found' });
     }
   });
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected');
-  });
-});
-
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});

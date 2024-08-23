@@ -7,6 +7,7 @@ const Home = () => {
   const [gameId, setGameId] = useState('');
   const [playerName, setPlayerName] = useState('');
   const [playerColor, setPlayerColor] = useState('#000000');
+  const [totalRounds, setTotalRounds] = useState(10);
   const navigate = useNavigate();
 
   const handleCreateGame = async () => {
@@ -28,6 +29,7 @@ const Home = () => {
       alert('Failed to join game. Please check the game ID and try again.');
     }
   };
+
   return (
     <div className="container">
       <h1>Wavelength Game</h1>
@@ -44,6 +46,7 @@ const Home = () => {
           value={playerColor}
           onChange={(e) => setPlayerColor(e.target.value)}
         />
+      
         <button onClick={handleCreateGame}>Create Game</button>
       </div>
       <div className="game-info">
